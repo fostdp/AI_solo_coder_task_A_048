@@ -1,0 +1,22 @@
+version: '3.8'
+
+services:
+  influxdb:
+    image: influxdb:2.7
+    container_name: corrosion-monitor-influxdb
+    ports:
+      - "8086:8086"
+    volumes:
+      - influxdb-data:/var/lib/influxdb2
+      - ./init.iql:/docker-entrypoint-initdb.d/init.iql
+    environment:
+      - DOCKER_INFLUXDB_INIT_MODE=setup
+      - DOCKER_INFLUXDB_INIT_USERNAME=admin
+      - DOCKER_INFLUXDB_INIT_PASSWORD=corrosion2026
+      - DOCKER_INFLUXDB_INIT_ORG=archaeology
+      - DOCKER_INFLUXDB_INIT_BUCKET=corrosion_data
+      - DOCKER_INFLUXDB_INIT_ADMIN_TOKEN=corrosion-monitor-token-2026
+    restart: unless-stopped
+
+volumes:
+  influxdb-data:

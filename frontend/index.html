@@ -3,138 +3,130 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>智慧油田注水开发动态调控系统</title>
+    <title>宋代战地医院遗址腐蚀监测系统</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <link rel="stylesheet" href="css/style.css" />
 </head>
 <body>
     <div class="app-container">
-        <header class="app-header">
-            <h1>智慧油田注水开发动态调控系统</h1>
-            <div class="header-info">
-                <span id="current-time">--</span>
-                <span class="status-indicator online">系统在线</span>
+        <header class="header">
+            <div class="header-left">
+                <h1>🏛️ 宋代战地医院遗址腐蚀监测系统</h1>
+                <p class="subtitle">古代战地医院遗址微环境与出土医疗器具腐蚀监测平台</p>
+            </div>
+            <div class="header-right">
+                <div class="stat-card">
+                    <span class="stat-label">遗址面积</span>
+                    <span class="stat-value">2,000㎡</span>
+                </div>
+                <div class="stat-card">
+                    <span class="stat-label">设备总数</span>
+                    <span class="stat-value" id="stat-total">--</span>
+                </div>
+                <div class="stat-card warning">
+                    <span class="stat-label">高风险探头</span>
+                    <span class="stat-value" id="stat-risk">--</span>
+                </div>
+                <div class="stat-card">
+                    <span class="stat-label">平均腐蚀速率</span>
+                    <span class="stat-value" id="stat-avg">--</span>
+                </div>
             </div>
         </header>
 
         <div class="main-content">
-            <aside class="left-panel">
-                <div class="panel-section">
-                    <h3>核心指标</h3>
-                    <div class="indicator-cards">
-                        <div class="indicator-card oil">
-                            <div class="indicator-label">日产油量</div>
-                            <div class="indicator-value" id="daily-oil">--</div>
-                            <div class="indicator-unit">t</div>
-                            <div class="indicator-change" id="oil-change">--</div>
-                        </div>
-                        <div class="indicator-card water">
-                            <div class="indicator-label">日注水量</div>
-                            <div class="indicator-value" id="daily-water">--</div>
-                            <div class="indicator-unit">m³</div>
-                            <div class="indicator-change" id="water-change">--</div>
-                        </div>
-                        <div class="indicator-card cut">
-                            <div class="indicator-label">综合含水率</div>
-                            <div class="indicator-value" id="water-cut">--</div>
-                            <div class="indicator-unit">%</div>
-                            <div class="indicator-change" id="cut-change">--</div>
-                        </div>
+            <aside class="sidebar">
+                <div class="panel">
+                    <h3>📋 设备列表</h3>
+                    <div class="tabs">
+                        <button class="tab-btn active" data-tab="all">全部 (60)</button>
+                        <button class="tab-btn" data-tab="soil">土壤传感器 (40)</button>
+                        <button class="tab-btn" data-tab="corrosion">腐蚀探头 (20)</button>
+                    </div>
+                    <div class="device-list" id="device-list">
+                        <div class="loading">加载中...</div>
                     </div>
                 </div>
 
-                <div class="panel-section">
-                    <h3>区块筛选</h3>
-                    <select id="block-selector" class="form-control">
-                        <option value="ALL">全部区块</option>
-                    </select>
-                </div>
-
-                <div class="panel-section">
-                    <h3>图层控制</h3>
-                    <div class="layer-controls">
-                        <label class="checkbox-item">
-                            <input type="checkbox" id="show-injection" checked>
-                            <span class="legend-circle injection"></span>
-                            注水井
-                        </label>
-                        <label class="checkbox-item">
-                            <input type="checkbox" id="show-production" checked>
-                            <span class="legend-triangle production"></span>
-                            采油井
-                        </label>
-                        <label class="checkbox-item">
-                            <input type="checkbox" id="show-relations" checked>
-                            <span class="legend-line"></span>
-                            注采对应关系
-                        </label>
-                        <label class="checkbox-item">
-                            <input type="checkbox" id="show-allocation" checked>
-                            <span class="legend-arrow"></span>
-                            调配建议
+                <div class="panel">
+                    <h3>⚙️ 控制面板</h3>
+                    <div class="control-group">
+                        <label>显示热力图</label>
+                        <label class="switch">
+                            <input type="checkbox" id="toggle-heatmap" checked>
+                            <span class="slider"></span>
                         </label>
                     </div>
-                </div>
-
-                <div class="panel-section">
-                    <h3>注采受效图例</h3>
-                    <div class="legend-items">
-                        <div class="legend-item">
-                            <span class="legend-line" style="background: #00FF00;"></span>
-                            <span>高效受效</span>
-                        </div>
-                        <div class="legend-item">
-                            <span class="legend-line" style="background: #FFFF00;"></span>
-                            <span>中等受效</span>
-                        </div>
-                        <div class="legend-item">
-                            <span class="legend-line" style="background: #FF0000;"></span>
-                            <span>无效受效</span>
-                        </div>
+                    <div class="control-group">
+                        <label>显示传感器</label>
+                        <label class="switch">
+                            <input type="checkbox" id="toggle-soil" checked>
+                            <span class="slider"></span>
+                        </label>
                     </div>
+                    <div class="control-group">
+                        <label>显示腐蚀探头</label>
+                        <label class="switch">
+                            <input type="checkbox" id="toggle-corrosion" checked>
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                    <div class="control-group">
+                        <label>热力图时间范围</label>
+                        <select id="heatmap-range">
+                            <option value="24">最近 24 小时</option>
+                            <option value="168" selected>最近 7 天</option>
+                            <option value="720">最近 30 天</option>
+                        </select>
+                    </div>
+                    <button class="btn-primary" id="btn-refresh">🔄 刷新数据</button>
                 </div>
 
-                <div class="panel-section">
-                    <h3>告警信息 <span class="badge" id="alarm-badge">0</span></h3>
-                    <div class="alarm-list" id="alarm-list">
-                        <div class="no-data">暂无告警</div>
+                <div class="panel legend-panel">
+                    <h3>📊 图例说明</h3>
+                    <div class="legend-item">
+                        <div class="legend-color soil-sensor"></div>
+                        <span>土壤温湿度/pH/氯离子传感器</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color iron-probe"></div>
+                        <span>铁器腐蚀监测探头</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color copper-probe"></div>
+                        <span>铜器腐蚀监测探头</span>
+                    </div>
+                    <div class="legend-gradient">
+                        <div class="gradient-bar"></div>
+                        <div class="gradient-labels">
+                            <span>低风险</span>
+                            <span>中风险</span>
+                            <span>高风险</span>
+                        </div>
                     </div>
                 </div>
             </aside>
 
-            <main class="map-container">
+            <section class="map-section">
                 <div id="map"></div>
-                <canvas id="well-canvas"></canvas>
-                <div class="map-controls">
-                    <button class="control-btn" onclick="refreshAllData()">
-                        <span>🔄</span> 刷新数据
-                    </button>
-                    <button class="control-btn" onclick="runAllocation()">
-                        <span>📊</span> 生成调配建议
-                    </button>
-                    <button class="control-btn" onclick="checkAlarms()">
-                        <span>⚠️</span> 检查告警
-                    </button>
-                </div>
-            </main>
+                <canvas id="heatmap-canvas"></canvas>
+            </section>
+        </div>
 
-            <aside class="right-panel" id="detail-panel" style="display: none;">
-                <div class="panel-header">
-                    <h3 id="detail-title">井详情</h3>
-                    <button class="close-btn" onclick="closeDetailPanel()">×</button>
+        <div id="detail-modal" class="modal-overlay">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2 id="modal-title">探头详情</h2>
+                    <button class="close-btn" id="close-modal">&times;</button>
                 </div>
-                <div class="panel-content" id="detail-content">
+                <div class="modal-body" id="modal-body">
+                    <div class="loading">加载中...</div>
                 </div>
-            </aside>
+            </div>
         </div>
     </div>
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-    <script src="js/config.js"></script>
-    <script src="js/api.js"></script>
-    <script src="js/map.js"></script>
-    <script src="js/charts.js"></script>
     <script src="js/app.js"></script>
 </body>
 </html>
