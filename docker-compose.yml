@@ -1,0 +1,80 @@
+version: '3.8'
+
+services:
+  influxdb:
+    image: influxdb:2.7-alpine
+    ports:
+      - "8086:8086"
+    environment:
+      - DOCKER_INFLUXDB_INIT_MODE=setup
+      - DOCKER_INFLUXDB_INIT_USERNAME=admin
+      - DOCKER_INFLUXDB_INIT_PASSWORD=admin123456
+      - DOCKER_INFLUXDB_INIT_ORG=archaeology
+      - DOCKER_INFLUXDB_INIT_BUCKET=corrosion_data
+      - DOCKER_INFLUXDB_INIT_ADMIN_TOKEN=corrosion-monitor-token-2026
+    volumes:
+      - influxdb_data:/var/lib/influxdb2
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8086/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  backend:
+    build: ./backend
+    ports:
+      - "8080:8080"
+    depends_on:
+      influxdb:
+        condition: service_healthy
+    environment:
+      - INFLUXDB_URL=http://influxdb:8086
+      - INFLUXDB_TOKEN=corrosion-monitor-token-2026
+      - INFLUXDB_ORG=archaeology
+      - INFLUXDB_BUCKET=corrosion_data
+      - RUST_LOG=info
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  lora-simulator:
+    build: ./lora-simulator
+    depends_on:
+      - backend
+    environment:
+      - LORA_ENDPOINT=http://backend:8080/api/lora/data
+      - SIM_SOIL_SENSORS=40
+      - SIM_CORROSION_PROBES=20
+      - SIM_INTERVAL_MINUTES=30
+      - SIM_BURST_MODE=false
+      - SIM_CHLORIDE_SPIKE=false
+      - SIM_CHLORIDE_SPIKE_ZONE=区域1-主营区
+      - SIM_CHLORIDE_SPIKE_VALUE=300.0
+    restart: unless-stopped
+
+  frontend-nginx:
+    build:
+      context: .
+      dockerfile: nginx/Dockerfile
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    environment:
+      - BACKEND_URL=http://backend:8080
+    volumes:
+      - ./frontend:/usr/share/nginx/html:ro
+
+  prometheus:
+    image: prom/prometheus:latest
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+
+volumes:
+  influxdb_data:

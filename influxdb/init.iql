@@ -1,64 +1,139 @@
--- 古代战地医院遗址腐蚀监测系统 - InfluxDB 初始化脚本
+-- ============================================================
+-- 考古腐蚀监测系统 - InfluxDB 初始化脚本 (InfluxQL)
 -- 数据库: corrosion_data
 -- 组织: archaeology
+-- ============================================================
 
--- 创建土壤环境数据保留策略 (2年)
-CREATE RETENTION POLICY "rp_soil_2y" ON "corrosion_data" DURATION 104w REPLICATION 1 DEFAULT;
+-- ============================================================
+-- 一、保留策略 (Retention Policies)
+-- ============================================================
 
--- 创建腐蚀监测数据保留策略 (5年)
-CREATE RETENTION POLICY "rp_corrosion_5y" ON "corrosion_data" DURATION 260w REPLICATION 1;
+-- 修改默认 autogen 保留策略: 30天 (原始数据)
+-- 注意: InfluxDB 2.x 中 autogen 是默认保留策略
+ALTER RETENTION POLICY "autogen" ON "corrosion_data" DURATION 30d REPLICATION 1 DEFAULT;
 
--- 创建告警数据保留策略 (1年)
-CREATE RETENTION POLICY "rp_alarm_1y" ON "corrosion_data" DURATION 52w REPLICATION 1;
+-- 1分钟降采样数据保留策略: 90天
+CREATE RETENTION POLICY "rp_1m" ON "corrosion_data" DURATION 90d REPLICATION 1;
 
--- 土壤环境数据测量
--- tags: sensor_id, zone, sensor_type
--- fields: temperature(celsius), humidity(%), ph, chloride(ppm)
--- measurement: soil_environment
+-- 1小时降采样数据保留策略: 365天
+CREATE RETENTION POLICY "rp_1h" ON "corrosion_data" DURATION 365d REPLICATION 1;
 
--- 金属腐蚀监测数据测量
--- tags: probe_id, zone, material_type (iron/copper)
--- fields: resistance(ohm), corrosion_rate(mm/year), polarization_resistance(ohm-cm2)
--- measurement: metal_corrosion
+-- 每日聚合数据保留策略: 3年 (1095天)
+CREATE RETENTION POLICY "rp_1d" ON "corrosion_data" DURATION 1095d REPLICATION 1;
 
--- 告警事件测量
--- tags: device_id, alarm_type, level
--- fields: message, value, threshold
--- measurement: alarm_events
+-- ============================================================
+-- 二、测量 (Measurements) 说明
+-- ============================================================
+--
+-- 原始测量 (autogen 保留策略):
+--   - metal_corrosion: 金属腐蚀监测数据
+--     tags: probe_id, zone, material_type (iron/copper)
+--     fields: corrosion_rate (mm/year), resistance (ohm), 
+--             polarization_resistance (ohm-cm2)
+--
+--   - soil_environment: 土壤环境监测数据
+--     tags: sensor_id, zone, sensor_type
+--     fields: temperature (celsius), humidity (%), ph, chloride (ppm)
+--
+-- 降采样测量:
+--   - rp_1m: corrosion_1m, soil_1m
+--   - rp_1h: corrosion_1h, soil_1h
+--   - rp_1d: corrosion_1d
+--
+-- ============================================================
 
--- 连续查询: 每小时聚合土壤环境数据
-CREATE CONTINUOUS QUERY "cq_soil_hourly" ON "corrosion_data"
+-- ============================================================
+-- 三、连续查询 (Continuous Queries) - 第一层: 1分钟降采样
+-- ============================================================
+
+-- 腐蚀数据 1分钟降采样
+CREATE CONTINUOUS QUERY "cq_corrosion_1m" ON "corrosion_data"
 BEGIN
   SELECT
-    mean("temperature") AS "avg_temperature",
-    mean("humidity") AS "avg_humidity",
-    mean("ph") AS "avg_ph",
-    mean("chloride") AS "avg_chloride"
-  INTO "corrosion_data"."rp_soil_2y"."soil_environment_hourly"
-  FROM "corrosion_data"."rp_soil_2y"."soil_environment"
-  GROUP BY time(1h), "sensor_id", "zone"
+    mean("corrosion_rate") AS "mean_corrosion_rate",
+    min("corrosion_rate") AS "min_corrosion_rate",
+    max("corrosion_rate") AS "max_corrosion_rate",
+    last("corrosion_rate") AS "last_corrosion_rate",
+    mean("resistance") AS "mean_resistance",
+    mean("polarization_resistance") AS "mean_polarization_resistance"
+  INTO "corrosion_data"."rp_1m"."corrosion_1m"
+  FROM "corrosion_data"."autogen"."metal_corrosion"
+  GROUP BY time(1m), "probe_id", "zone", "material_type"
 END;
 
--- 连续查询: 每小时聚合腐蚀速率数据
-CREATE CONTINUOUS QUERY "cq_corrosion_hourly" ON "corrosion_data"
+-- 土壤环境数据 1分钟降采样
+CREATE CONTINUOUS QUERY "cq_soil_1m" ON "corrosion_data"
 BEGIN
   SELECT
-    mean("corrosion_rate") AS "avg_corrosion_rate",
-    mean("resistance") AS "avg_resistance",
-    mean("polarization_resistance") AS "avg_polarization_resistance"
-  INTO "corrosion_data"."rp_corrosion_5y"."metal_corrosion_hourly"
-  FROM "corrosion_data"."rp_corrosion_5y"."metal_corrosion"
+    mean("temperature") AS "mean_temperature",
+    mean("humidity") AS "mean_humidity",
+    mean("ph") AS "mean_ph",
+    mean("chloride") AS "mean_chloride"
+  INTO "corrosion_data"."rp_1m"."soil_1m"
+  FROM "corrosion_data"."autogen"."soil_environment"
+  GROUP BY time(1m), "sensor_id", "zone"
+END;
+
+-- ============================================================
+-- 四、连续查询 - 第二层: 1小时降采样 (从 rp_1m 聚合)
+-- ============================================================
+
+-- 腐蚀数据 1小时降采样
+CREATE CONTINUOUS QUERY "cq_corrosion_1h" ON "corrosion_data"
+BEGIN
+  SELECT
+    mean("mean_corrosion_rate") AS "mean_corrosion_rate",
+    min("min_corrosion_rate") AS "min_corrosion_rate",
+    max("max_corrosion_rate") AS "max_corrosion_rate",
+    last("last_corrosion_rate") AS "last_corrosion_rate",
+    mean("mean_resistance") AS "mean_resistance",
+    mean("mean_polarization_resistance") AS "mean_polarization_resistance"
+  INTO "corrosion_data"."rp_1h"."corrosion_1h"
+  FROM "corrosion_data"."rp_1m"."corrosion_1m"
   GROUP BY time(1h), "probe_id", "zone", "material_type"
 END;
 
--- 连续查询: 每日聚合腐蚀速率用于长期趋势
-CREATE CONTINUOUS QUERY "cq_corrosion_daily" ON "corrosion_data"
+-- 土壤环境数据 1小时降采样
+CREATE CONTINUOUS QUERY "cq_soil_1h" ON "corrosion_data"
 BEGIN
   SELECT
-    mean("corrosion_rate") AS "avg_corrosion_rate",
-    max("corrosion_rate") AS "max_corrosion_rate",
-    min("corrosion_rate") AS "min_corrosion_rate"
-  INTO "corrosion_data"."rp_corrosion_5y"."metal_corrosion_daily"
-  FROM "corrosion_data"."rp_corrosion_5y"."metal_corrosion"
+    mean("mean_temperature") AS "mean_temperature",
+    mean("mean_humidity") AS "mean_humidity",
+    mean("mean_ph") AS "mean_ph",
+    mean("mean_chloride") AS "mean_chloride"
+  INTO "corrosion_data"."rp_1h"."soil_1h"
+  FROM "corrosion_data"."rp_1m"."soil_1m"
+  GROUP BY time(1h), "sensor_id", "zone"
+END;
+
+-- ============================================================
+-- 五、连续查询 - 第三层: 每日聚合 (从 rp_1h 聚合)
+-- ============================================================
+
+-- 腐蚀数据每日聚合
+CREATE CONTINUOUS QUERY "cq_corrosion_1d" ON "corrosion_data"
+BEGIN
+  SELECT
+    mean("mean_corrosion_rate") AS "mean_corrosion_rate",
+    min("min_corrosion_rate") AS "min_corrosion_rate",
+    max("max_corrosion_rate") AS "max_corrosion_rate",
+    last("last_corrosion_rate") AS "last_corrosion_rate"
+  INTO "corrosion_data"."rp_1d"."corrosion_1d"
+  FROM "corrosion_data"."rp_1h"."corrosion_1h"
   GROUP BY time(1d), "probe_id", "zone", "material_type"
+END;
+
+-- 土壤环境数据每日聚合
+CREATE CONTINUOUS QUERY "cq_soil_1d" ON "corrosion_data"
+BEGIN
+  SELECT
+    mean("mean_temperature") AS "mean_temperature",
+    min("mean_temperature") AS "min_temperature",
+    max("mean_temperature") AS "max_temperature",
+    mean("mean_humidity") AS "mean_humidity",
+    mean("mean_ph") AS "mean_ph",
+    mean("mean_chloride") AS "mean_chloride"
+  INTO "corrosion_data"."rp_1d"."soil_1d"
+  FROM "corrosion_data"."rp_1h"."soil_1h"
+  GROUP BY time(1d), "sensor_id", "zone"
 END;

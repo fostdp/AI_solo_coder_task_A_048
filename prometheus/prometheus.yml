@@ -1,0 +1,6 @@
+scrape_configs:
+  - job_name: 'corrosion-backend'
+    scrape_interval: 15s
+    static_configs:
+      - targets: ['backend:8080']
+    metrics_path: /metrics

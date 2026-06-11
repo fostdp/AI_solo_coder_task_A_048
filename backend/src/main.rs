@@ -3,16 +3,19 @@ pub mod ingress;
 pub mod corrosion_engine;
 pub mod storage;
 pub mod alert_broker;
+pub mod metrics;
 
 use actix_cors::Cors;
 use actix_web::{web, App, HttpResponse, HttpServer, Responder};
 use std::sync::Arc;
+use std::time::Instant;
 
 use common::*;
 use ingress::{LoraGateway, receive_lora_data, get_gateway_stats};
 use corrosion_engine::{CorrosionPredictor, StabilityAnalyzer, calculate_corrosion_rate_lpr};
 use storage::StorageService;
 use alert_broker::AlertService;
+use prometheus::Registry;
 
 pub struct AppState {
     pub config: AppConfig,
@@ -21,13 +24,18 @@ pub struct AppState {
     pub predictor: CorrosionPredictor,
     pub gateway: LoraGateway,
     pub locations: Vec<ProbeLocation>,
+    pub registry: Registry,
 }
 
 async fn health_check() -> impl Responder {
-    HttpResponse::Ok().json(ApiResponse::ok(serde_json::json!({
+    let start = Instant::now();
+    let response = HttpResponse::Ok().json(ApiResponse::ok(serde_json::json!({
         "status": "healthy",
         "version": "2.0.0",
-    })))
+    })));
+    let duration = start.elapsed().as_secs_f64();
+    metrics::record_request("GET", "/api/health", "200", duration);
+    response
 }
 
 async fn get_locations(data: web::Data<Arc<AppState>>) -> impl Responder {
@@ -35,6 +43,7 @@ async fn get_locations(data: web::Data<Arc<AppState>>) -> impl Responder {
 }
 
 async fn get_stats(data: web::Data<Arc<AppState>>) -> impl Responder {
+    let start = Instant::now();
     let soil_count = data.locations.iter().filter(|l| l.device_type == "soil_sensor").count();
     let corr_count = data.locations.iter().filter(|l| l.device_type == "corrosion_probe").count();
     let zones: std::collections::HashSet<_> = data.locations.iter().map(|l| &l.zone).collect();
@@ -53,7 +62,7 @@ async fn get_stats(data: web::Data<Arc<AppState>>) -> impl Responder {
     }
     let avg_rate = if count > 0 { rate_sum / count as f64 } else { 0.0 };
 
-    HttpResponse::Ok().json(ApiResponse::ok(SiteStats {
+    let response = HttpResponse::Ok().json(ApiResponse::ok(SiteStats {
         total_soil_sensors: soil_count,
         total_corrosion_probes: corr_count,
         total_zones: zones.len(),
@@ -63,7 +72,21 @@ async fn get_stats(data: web::Data<Arc<AppState>>) -> impl Responder {
         avg_humidity: 45.0,
         avg_ph: 7.2,
         avg_chloride: 55.0,
-    }))
+    }));
+    let duration = start.elapsed().as_secs_f64();
+    metrics::record_request("GET", "/api/stats", "200", duration);
+    response
+}
+
+async fn get_metrics(data: web::Data<Arc<AppState>>) -> impl Responder {
+    use prometheus::TextEncoder;
+    let encoder = TextEncoder::new();
+    let metric_families = data.registry.gather();
+    let mut buffer = String::new();
+    encoder.encode_utf8(&metric_families, &mut buffer).unwrap();
+    HttpResponse::Ok()
+        .content_type("text/plain; version=0.0.4; charset=utf-8")
+        .body(buffer)
 }
 
 async fn get_corrosion_trend(
@@ -146,6 +169,7 @@ async fn main() -> std::io::Result<()> {
     let predictor = CorrosionPredictor::new();
     let gateway = LoraGateway::new();
     let locations = generate_device_locations();
+    let registry = metrics::register_custom_metrics();
 
     let app_state = Arc::new(AppState {
         config,
@@ -154,6 +178,7 @@ async fn main() -> std::io::Result<()> {
         predictor,
         gateway,
         locations,
+        registry,
     });
 
     tracing::info!("Starting HTTP server at http://{}", listen_addr);
@@ -162,6 +187,7 @@ async fn main() -> std::io::Result<()> {
         App::new()
             .wrap(cors)
             .app_data(web::Data::new(app_state.clone()))
+            .route("/metrics", web::get().to(get_metrics))
             .route("/api/health", web::get().to(health_check))
             .route("/api/stats", web::get().to(get_stats))
             .route("/api/locations", web::get().to(get_locations))

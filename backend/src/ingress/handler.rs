@@ -5,6 +5,7 @@ use crate::ingress::LoraGateway;
 use crate::storage::StorageService;
 use crate::alert_broker::AlertService;
 use crate::corrosion_engine::calculate_corrosion_rate_lpr;
+use crate::metrics;
 
 pub async fn receive_lora_data(
     data: web::Data<Arc<crate::AppState>>,
@@ -14,6 +15,8 @@ pub async fn receive_lora_data(
     let _id = packet.device_id.clone();
     let _seq = packet.seq_id;
     let ordered = data.gateway.receive_packet(packet).await?;
+    let reordered = ordered.is_empty();
+    metrics::inc_lora_packets(reordered);
     if ordered.is_empty() {
         tracing::debug!("Packet cached in reorder window, id={}, seq={}", _id, _seq);
     }

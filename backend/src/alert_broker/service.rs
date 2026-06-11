@@ -9,6 +9,7 @@ use uuid::Uuid;
 use tracing::{info, warn, error};
 use crate::common::*;
 use crate::storage::BatchWriter;
+use crate::metrics;
 
 pub struct AlertService {
     config: AppConfig,
@@ -87,6 +88,8 @@ impl AlertService {
         self.send_wecom(&message).await?;
         self.send_sms(&message).await?;
         self.mark_sent(&key).await;
+
+        metrics::inc_corrosion_alerts();
 
         Ok(true)
     }
